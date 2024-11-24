@@ -1,0 +1,167 @@
+---
+title: "PR 1"
+subtitle: "Database Design"
+author: Alejandro Pérez Bueno
+date: today
+date-format: "MMM DD, YYYY"
+toc: true
+toc-title: "Table of Contents"
+linkcolor: blue
+documentclass: report
+link-citations: true
+link-bibliography: true
+format:
+  gfm: default
+  pdf:
+    linestretch: 1.25
+    code-overflow: wrap
+    keep-tex: true
+    geometry:
+      - top=15mm
+      - left=10mm
+      - heightrounded
+    include-in-header:
+      text: |
+        \usepackage{fancyhdr}
+          \pagestyle{fancy}
+          \fancyhead[C]{UOC}
+          \fancyhead[R]{aperez-b@uoc.edu}
+          \fancyfoot{}
+          \fancyfoot[C]{\thepage}
+        \usepackage{fvextra}
+        \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+        \DefineVerbatimEnvironment{OutputCode}{Verbatim}{breaklines,commandchars=\\\{\}}
+---
+
+{{< pagebreak >}}
+
+## Exercise 1
+
+![UML Class Diagram](./img/diagram1.png)
+
+### Semantic Assumptions and Constraints:
+
+* **Client:**
+    * `clientID` is the primary key (PK), ensuring each client has a unique ID.
+    * `nifnie` could serve as an alternate key (AK) if it's guaranteed to be unique for every client. This information isn't explicitly stated.
+    * `cityID` is a foreign key (FK) referencing the `City` entity, establishing the client's city of residence.
+
+* **Buyer/Seller:**
+    * These are subtypes of `Client`, inheriting all client attributes.
+    * `Buyer` has an additional attribute `purchasingPreferences` to record specific buying criteria.
+    * `Seller` has no additional attributes based on the provided information.
+
+* **City:**
+    * `cityID` is the primary key, ensuring each city has a unique ID.
+    * A constraint should be added to enforce uniqueness of city names within the same province. This is a requirement stated in your description, but not directly reflected in the schema as an attribute.
+
+* **Property:**
+    * `propertyID` is the primary key, ensuring each property has a unique ID.
+    * `cityID` is a foreign key referencing the `City` entity, specifying the property's location.
+    * A constraint is added to ensure each property is listed by a seller. This relationship enforces that sellers must list at least one property. 
+
+* **Residential/Commercial:**
+    * These are subtypes of `Property`, inheriting all property attributes.
+    * `Residential` has additional attributes for `rooms`, `bathrooms`, and `terraces`.
+    * `Commercial` has an additional attribute `primaryUse` to describe the property's main commercial activity.
+
+* **Offer:**
+    * `offerID` is the primary key, ensuring each offer has a unique ID.
+    * `buyerID` and `propertyID` are foreign keys referencing `Buyer` and `Property` respectively, linking an offer to a specific buyer and property.
+    * A constraint needs to be added to prevent multiple offers on the same property by the same buyer on the same day. This constraint is beyond the basic structure of the schema and would need additional implementation logic.
+
+* **Purchase:**
+    * `purchaseID` is the primary key, ensuring each purchase has a unique ID. 
+    * `offerID` is a foreign key referencing `Offer`, connecting the purchase to the accepted offer.
+
+* **Payment:**
+    * `paymentID` is the primary key, ensuring each payment has a unique ID.
+    * `purchaseID` is a foreign key referencing `Purchase`, linking the payment to a specific purchase.
+    * `paymentNumber` tracks the sequence of payments within a purchase.
+
+## Exercise 2
+
+![UML Diagram](./img/diagram2.png)
+
+## Exercise 3
+
+### 1. Functional Dependencies in `ClientInterest`
+
+Based on the provided description of the `ClientInterest` table, the following functional dependencies can be identified:
+
+* **Client_ID → {Client_NIF, Client_Name, Client_Phone}**: A client's ID uniquely determines their tax identification number, name, and phone number.
+* **Property_ID → {Address, City, Province, Sale_Price, Agency}**:  A property's ID uniquely determines its address, city, province, sale price, and the managing agency. 
+* **{Client_ID, Property_ID} → {Proposed_Price}**: The combination of client ID and property ID determines the proposed price offered by that client for that specific property.
+
+### 2. Possible Primary Key
+
+A suitable primary key for the `ClientInterest` relation is **{Client_ID, Property_ID}**. This composite key ensures that each tuple in the table represents a unique combination of a client and a property they are interested in. 
+
+* **Uniqueness**: The combination of `Client_ID` and `Property_ID` guarantees uniqueness because a client can be interested in multiple properties and a property can have multiple interested clients.
+* **Minimality**: Both attributes are necessary for uniqueness, as using only one wouldn't be sufficient to identify a specific client's interest in a particular property.
+
+### 3. Anomalies 
+
+The current design of the `ClientInterest` table can lead to several anomalies:
+
+**a) Insertion Anomaly**
+
+* **Problem**: Adding a new client who hasn't yet shown interest in any property is impossible.
+* **Reason**: The primary key requires both `Client_ID` and `Property_ID`. Without an existing property to link to, a new client entry cannot be created. 
+
+**b) Update Anomaly**
+
+* **Problem**: Changing the sale price of a property requires updating multiple tuples.
+* **Reason**: The `Sale_Price` attribute is dependent on `Property_ID`. If a property's price changes, all tuples related to that property need to be updated. The number of updates would equal the number of clients interested in that property.
+
+**c) Deletion Anomaly** 
+
+* **Problem**: Deleting a client's interest in a property could lead to loss of information about the property itself.
+* **Reason**: If a client's interest is the only tuple associated with a particular property, deleting that tuple removes all data about the property from the table.
+
+### 4. Normal Form and BCNF Compliance
+
+**Current Normal Form**
+
+The `ClientInterest` relation is in **Second Normal Form (2NF)**.
+
+* **1NF Compliance**: All attributes are atomic (no repeating groups or multi-valued attributes).
+* **2NF Compliance**: No non-prime attribute (attributes not part of any candidate key) is dependent on a part of a candidate key.
+
+**BCNF Violation**
+
+The relation is **not in Boyce-Codd Normal Form (BCNF)** because it violates the rule that every determinant must be a candidate key. 
+
+* **Violation**: The dependencies  `Client_ID` → `{Client_NIF, Client_Name, Client_Phone}` and `Property_ID` → `{Address, City, Province, Sale_Price, Agency}` exist, but neither `Client_ID` nor `Property_ID` is a candidate key on its own. The composite key `{Client_ID, Property_ID}` is the only candidate key.
+
+**Solution to Achieve BCNF**
+
+To make the relation BCNF-compliant, the table needs to be decomposed into three separate relations:
+
+**1. Client Table (1NF)**
+
+* **Primary Key**: Client_ID
+
+**2. Property Table (1NF)**
+
+* **Primary Key**: Property_ID
+
+**3. ClientInterest Table (1NF)**
+
+* **Primary Key**: {Client_ID, Property_ID}
+* **Foreign Keys**: Client_ID referencing the Client table, Property_ID referencing the Property table.
+
+**Justification**
+
+This decomposition achieves BCNF:
+
+* Each relation is in 1NF (and consequently 2NF) as all attributes are atomic.
+* All determinants in each relation are candidate keys: `Client_ID` in the Client table, `Property_ID` in the Property table, and `{Client_ID, Property_ID}` in the ClientInterest table.
+
+**Benefits of Decomposition**
+
+* Eliminates redundancy: Client and property information is stored only once.
+* Solves anomalies:
+    * New clients can be added without needing a property link.
+    * Property price updates only affect one tuple in the Property table.
+    * Deleting client interest doesn't affect property data.
