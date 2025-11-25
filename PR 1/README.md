@@ -1,400 +1,178 @@
 # PR 1
 Alejandro Pérez Bueno
-Apr 23, 2025
+Nov 25, 2025
 
 - [Exercise 1](#exercise-1)
-  - [Entities & Keys](#entities--keys)
-  - [Associations & Multiplicities](#associations--multiplicities)
-  - [Constraints/Notes](#constraintsnotes)
-- [Requirements / Constraints NOT EXPLICITLY MODELED or
-  Ambiguous](#requirements--constraints-not-explicitly-modeled-or-ambiguous)
-- [Further Assumptions/Limitations](#further-assumptionslimitations)
 - [Exercise 2](#exercise-2)
-  - [**1. Referee**](#1-referee)
-  - [**2. Competition**](#2-competition)
-  - [**3. WorksFor** (Associative Table for Referee &
-    Competition)](#3-worksfor-associative-table-for-referee--competition)
-  - [**4. Game**](#4-game)
-  - [**5. Club**](#5-club)
-  - [**6. Player**](#6-player)
-  - [**7. City**](#7-city)
-- [**Relationships (Associative
-  Tables)**](#relationships-associative-tables)
-- [**Summary Table**](#summary-table)
-  - [**Enumerations**](#enumerations)
-- [**Nullable Attributes**](#nullable-attributes)
 - [Exercise 3](#exercise-3)
-- [a) **Normal Form Analysis and BCNF
-  Changes**](#a-normal-form-analysis-and-bcnf-changes)
-- [b) **Add Referee License Number and Name: Analyze Normal Form, BCNF
-  Changes**](#b-add-referee-license-number-and-name-analyze-normal-form-bcnf-changes)
-- [c) **Add Referee Categories**](#c-add-referee-categories)
-- [d) **Player Pairs’ First Match Info: To
-  BCNF**](#d-player-pairs-first-match-info-to-bcnf)
+  - [a) Rental1](#a-rental1)
+  - [b) Rental2](#b-rental2)
 
 
 
 ## Exercise 1
 
-![Diagram](./img/diagram1.png)
+![Conceptual Design](./img/ex1.png)
 
-### Entities & Keys
+Constraints:
 
-- **Country:** ISO code PK, stores name, players, referees
-- **Location:** PK per name, references country; only locations where
-  tournaments are held are stored
-- **Tournament:** Identified by code, edition, location, year, country
-  (location and country as FK)
-- **Participant:** code PK, also passport_number unique, references
-  country. Participants can be players, referees, experts, or
-  combinations as described.
-- **Player, Referee, Expert:** Subclasses (PK = FK to Participant). Note
-  that a participant can be player or referee or expert (ref & expert
-  can overlap, player & ref cannot). Expert has optional pseudonym.
-- **TournamentParticipation:** Associates participants, tournaments, and
-  roles (disallows player/referee overlap; allows ref/expert).
-- **Round:** PK = (tournament_code, round_number); can be round-robin
-  (with round_number), or knockout (with knockout_type/prize if
-  elimination round).
-- **Match:** PK = match_id, with round/tournament FK, referee FK,
-  white/black players.
-- **MoveRecord:** PK = (match_id, order_number), move coordinates,
-  explanation from expert.
-
-### Associations & Multiplicities
-
-- Each country may have several locations (1:M)
-- Each tournament in one location and country (1:M)
-- Each participant from a country (can only represent one), and
-  participate in multiple tournaments.
-- Referees cannot play as players.
-- Experts who are referees possible; experts and referees are not
-  disjoint (player/referee cannot overlap).
-- Rounds per tournament; matches per round; each match: exactly 2
-  players, 1 referee.
-- Each move record in a match, explained by one expert (did not say if
-  explanation is mandatory, but matches descriptions).
-- Not all experts may participate in a season.
-
-### Constraints/Notes
-
-- If `Participant` is a referee, CANNOT be a player (enforced by
-  application or logic).
-- Referee & expert overlap allowed (separate roles, same participant
-  possible).
-- A participant can only represent one country per season/tournament.
-- Rounds: `type` field distinguishes between round-robin and knockout;
-  if knockout, extra fields for stage/prize.
-- A player can play only one match per round (implicit, enforced by
-  logic/application).
-- Each match: one referee, two players, distinct participants.
-- Each round at a location; two rounds can be on the same date.
-- Only locations used for tournaments stored.
-
-## Requirements / Constraints NOT EXPLICITLY MODELED or Ambiguous
-
-- **Disjointness Player-Referee:** This cannot be enforced directly in
-  UML/Mermaid, noted for implementers.
-- **Round sequences & knockout types:** If needed, model could include
-  additional context (e.g. which round is “quarterfinal”, etc).
-- **Unique phone/address/pseudonym, etc.:** Unless stated, not assumed
-  unique.
-- **Location as Name:** Assumed name uniquely identifies a place (may
-  not be true in real world).
-- **Tournament per Year:** No explicit (tournament, year) unique
-  constraint, but possibly needed.
-- **Prizes only for Knockout Rounds:** Model allows a prize only for
-  knockout-type rounds.
-- **Players per Country:** Countries may have zero participants; numbers
-  stored as attributes, can be calculated from relations; could be
-  derived.
-- **Not all experts participate:** No explanation for unassigned move
-  records, but allows Null expert if not used.
-- **Move Explanations:** One expert per move record.
-- **Address and phone optional for participants.**
-
-## Further Assumptions/Limitations
-
-- **No intermediate tables for many-to-many** other than
-  TournamentParticipation, explicitly.
-- **Referee can arbitrarily many matches per round IF times don’t
-  overlap**; time overlaps not modeled at schema level, must be
-  application-level.
-- **Moves:** Each record always has white move, black move is usually
-  present but not always (last if white delivers checkmate).
-- **Cardinality indication via Mermaid syntax**; some semantic
-  constraints must be enforced at the application level.
+1.  **PK Constraints:**
+    - `InvoiceLine`: Primary Key is composite
+      `(InvoiceCode, LineNumber)`.
+    - `Intervention`: Primary Key is composite
+      `(IncidentCode, MechanicNIF, Date)`.
+2.  **Data Integrity:**
+    - `Bicycle.batteryPercentage`: Must be integer between 0 and 100.
+    - `User.email`: Must be Unique.
+    - `RepairShop.name`: Must be Unique.
+3.  **Business Logic:**
+    - A `Bicycle` cannot be at a `Base` if its status is ‘In Use’ or
+      ‘Broken’.
+    - An `Employee` cannot be both a `Mechanic` and a
+      `MaintenanceSupervisor` (Disjoint).
+    - `Person` hierarchy is overlapping (Employee can be User).
 
 ## Exercise 2
 
-### **1. Referee**
-
-| Attribute   | Type   | NULL | Description          |
-|-------------|--------|------|----------------------|
-| code        | String | No   | **PK**. Referee code |
-| name        | String | No   |                      |
-| nationality | String | No   |                      |
-| phone       | String | Yes  |                      |
-| email       | String | Yes  |                      |
-
-- **PK:** code
-
-### **2. Competition**
-
-| Attribute        | Type    | NULL | Description                       |
-|------------------|---------|------|-----------------------------------|
-| id               | Integer | No   | **PK**                            |
-| name             | String  | No   | **AK** (Assuming unique name)     |
-| fundationDate    | Date    | Yes  |                                   |
-| type             | String  | No   | Enum(‘league’,‘cup’,‘tournament’) |
-| address          | String  | Yes  |                                   |
-| country          | String  | No   |                                   |
-| competition_kind | String  | No   | ‘National’/‘International’        |
-
-- **PK:** id  
-- **AK:** name (if required)
-
-### **3. WorksFor** (Associative Table for Referee & Competition)
-
-| Attribute     | Type    | NULL | Description                 |
-|---------------|---------|------|-----------------------------|
-| refereeCode   | String  | No   | **PK, FK** (Referee.code)   |
-| competitionId | Integer | No   | **PK, FK** (Competition.id) |
-| initDate      | Date    | Yes  |                             |
-
-- **PK:** (refereeCode, competitionId)
-- **FK:** refereeCode → Referee.code  
-- **FK:** competitionId → Competition.id
-
-### **4. Game**
-
-| Attribute      | Type    | NULL | Description             |
-|----------------|---------|------|-------------------------|
-| id             | Integer | No   | **PK**                  |
-| date           | Date    | No   |                         |
-| result         | String  | Yes  |                         |
-| stadium        | String  | Yes  |                         |
-| competitionId  | Integer | No   | **FK** → Competition.id |
-| hostingClubId  | Integer | No   | **FK** → Club.code      |
-| visitingClubId | Integer | No   | **FK** → Club.code      |
-
-- **PK:** id
-- **FK:** competitionId → Competition.id  
-- **FK:** hostingClubId → Club.code  
-- **FK:** visitingClubId → Club.code
-
-### **5. Club**
-
-| Attribute     | Type    | NULL | Description                   |
-|---------------|---------|------|-------------------------------|
-| code          | Integer | No   | **PK**                        |
-| name          | String  | No   | **AK** (Assuming unique name) |
-| address       | String  | Yes  |                               |
-| stadium       | String  | No   |                               |
-| competitionId | Integer | Yes  | **FK** → Competition.id       |
-
-- **PK:** code
-- **AK:** name (if required)
-- **FK:** competitionId → Competition.id
-  - (Assumption, since Clubs “participate” in Competitions; adjust if
-    Many-to-Many is needed.)
-
-### **6. Player**
-
-| Attribute | Type    | NULL | Description        |
-|-----------|---------|------|--------------------|
-| code      | String  | No   | **PK**             |
-| name      | String  | No   |                    |
-| position  | String  | No   |                    |
-| salary    | Float   | Yes  |                    |
-| clubId    | Integer | No   | **FK** → Club.code |
-| cityId    | Integer | Yes  | **FK** → City.code |
-
-- **PK:** code
-- **FK:** clubId → Club.code
-- **FK:** cityId → City.code
-
-### **7. City**
-
-| Attribute | Type    | NULL | Description |
-|-----------|---------|------|-------------|
-| code      | Integer | No   | **PK**      |
-| name      | String  | No   |             |
-| province  | String  | Yes  |             |
-| county    | String  | Yes  |             |
-
-- **PK:** code
-
-## **Relationships (Associative Tables)**
-
-1.  **WorksFor** (\[see above\])
-2.  **Player–Club**: One Player belongs to one Club.  
-3.  **Player–City**: Player lives in a City.  
-4.  **Competition–Club**: Many Clubs can participate in many
-    Competitions.
-    - If this is a true M:N, we’d need:
-      `sql      Table Competition_Club (        competitionId INTEGER  -- FK to Competition.id        clubCode      INTEGER  -- FK to Club.code        PRIMARY KEY (competitionId, clubCode)      )`
-5.  **Game–Club**: Hosting and visiting Club are captured as FKs in
-    Game.
-
-## **Summary Table**
-
-| Table | Primary Keys | Alternate Keys | Foreign Keys (to) | Attributes that can be NULL |
-|----|----|----|----|----|
-| Referee | code |  |  | phone, email |
-| Competition | id | name (optional) |  | fundationDate, address |
-| WorksFor | refereeCode, competitionId |  | refereeCode→Referee.code, competitionId→Competition.id | initDate |
-| Game | id |  | competitionId→Competition.id, hostingClubId & visitingClubId→Club.code | result, stadium |
-| Club | code | name (optional) | competitionId→Competition.id (if applicable) | address |
-| Player | code |  | clubId→Club.code, cityId→City.code | salary, cityId |
-| City | code |  |  | province, county |
-| Competition_Club | competitionId, clubCode |  | competitionId→Competition.id, clubCode→Club.code |  |
-
-### **Enumerations**
-
-- Competition.type: {league, cup, tournament}
-- Competition.competition_kind: {National, International}
-
-## **Nullable Attributes**
-
-| Attribute | May be NULL? | Notes |
-|----|----|----|
-| Referee.phone | Yes | Optional phone |
-| Referee.email | Yes | Optional email |
-| Competition.fundationDate | Yes | May be unknown |
-| Competition.address | Yes |  |
-| WorksFor.initDate | Yes | May not always be set |
-| Game.result | Yes | Game may not be played yet |
-| Game.stadium | Yes | May be different/stadium not set |
-| Club.address | Yes | Optional |
-| Player.salary | Yes | Possibly unknown |
-| Player.cityId | Yes | Player may not have registered residence |
-| City.province | Yes | Depending on country |
-| City.county | Yes |  |
+![Relational Model](./img/ex2.png)
 
 ## Exercise 3
 
-## a) **Normal Form Analysis and BCNF Changes**
+### a) Rental1
 
-#### **Given relations:**
+The relation `Rental1` is currently in 1NF because all the attributes
+are atomic (as there are no repeating groups or lists).
 
-- **Championship(championshipID, name, startDate, location)**
-- **Player(playerID, name, rating, championshipsPlayed)**
-- **Game(gameID, championshipID, date, whitePlayerID, blackPlayerID)**
+However, it is not in 2NF. For a relation to be in this form, non-key
+attributes must depend on the *entire* primary key, not just part of it.
+The primary key here is `{momentStart, idUser, codeBicycle}`. Looking at
+the dependencies:
 
-**Foreign Keys:** - championshipID in Game → Championship -
-whitePlayerID, blackPlayerID in Game → Player
+- The user’s `name` and `phone` depend only on `idUser`, which is just a
+  part of the primary key.
+- The bicycle `model` depends only on `codeBicycle`, which is also just
+  a subset of the key.
 
-#### **What Normal Form are these in? Justify.**
+Because these partial dependencies exist, the relation suffers from
+redundancy and update anomalies.
 
-**1NF**:  
-All “attributes” are atomic (dates, integers, names, etc.), so relations
-are in 1NF.
+**Process of transforming it to BCNF:**
 
-**2NF:**  
-- No partial dependency on a part of a composite key (because all
-primary keys are simple except in Game, whose PK is gameID). - Each
-non-key attribute in each table depends on the entire PK. - So, all are
-in 2NF.
+To reach BCNF, we need to decompose the relations so that every
+determinant is a candidate key.
 
-**3NF:**  
-- **Championship**: All non-key attributes depend on championshipID. -
-**Player**: All attributes depend only on playerID. - **Game**: All
-attributes depend only on gameID. - No transitive dependencies. -
-Therefore, all relations are in 3NF.
+**Fixing Partial Dependenciesto reach 2NF**
 
-**BCNF:**  
-- In all tables, every determinant is a candidate key.  
-- No non-trivial FDs where the determinant is not a superkey.
+We have to to separate the attributes that depend on partial keys into
+their own tables.
 
-**All relations are already in BCNF. No changes needed.**
+1.  **User Data:** We can put `name` and `phone` in a separate relation
+    keyed by `idUser`.
+2.  **Bicycle Data:** We should again put `model` and `batteryType` in a
+    relation keyed by `codeBicycle`.
+3.  **Rental Data:** The original relation keeps the full primary key
+    plus the attributes that actually depend on the specific rental
+    instance (momentEnd and `price`).
 
-## b) **Add Referee License Number and Name: Analyze Normal Form, BCNF Changes**
+After the above changes, we have the follownig:
 
-- **New attributes in Game table: refereeLicenseNum, refereeName**
+- `Users` (idUser, name, phone)
+- `Bicycles_Temp` (codeBicycle, model, batteryType)
+- `Rentals` (momentStart, idUser, codeBicycle, momentEnd, price)
 
-So, Game(gameID, championshipID, date, whitePlayerID, blackPlayerID,
-refereeLicenseNum, refereeName)
+**Fixing 3NF/BCNF by removing transitive dependencieses)**
 
-#### **Normal Form Now**
+Looking at the `Bicycles_Temp` table created above, there is still an
+issue. The `batteryType` depends on the `model`, and the `model` depends
+on the `codeBicycle`.
 
-Assume: - A referee may referee multiple games. - A referee’s license
-number uniquely identifies the referee. - refereeLicenseNum determines
-refereeName (FD: refereeLicenseNum → refereeName).
+- Dependency: `model -> batteryType`
 
-**First, 1NF: Verified.** **2NF: The PK is gameID (a simple key) – all
-non-key attributes depend on it.**
+Since `model` is not a candidate key for the specific bicycle (many
+bikes can be the same model), this is a **transitive dependency**, which
+violates 3NF and BCNF. To fix this, we need to create a reference table
+for models\>
 
-**3NF:** - refereeLicenseNum determines refereeName - But refereeName is
-not determined by the PK, but by refereeLicenseNum. - There is a
-transitive dependency: gameID → refereeLicenseNum → refereeName
+1.  Create a `Models` relation where `model` is the key and determines
+    `batteryType`.
+2.  Update the `Bicycles` relation to only hold the `model` as a foreign
+    key
 
-Thus, **Game is NOT in 3NF nor BCNF**.
+**Final BCNF**
 
-#### **BCNF Decomposition**
+After these steps, every determinant in the relations is a candidate
+key, as shown below:
 
-Decompose into:
+1.  **Rentals** (**momentStart**, **idUser**, **codeBicycle**,
+    momentEnd, price)
+    - *Foreign Keys:* `idUser` references `Users`, `codeBicycle`
+      references `Bicycles`
+2.  **Users** (**idUser**, name, phone)
+3.  **Bicycles** (**codeBicycle**, model)
+    - *Foreign Keys:* `model` references `Models`
+4.  **Models** (**model**, batteryType)
 
-- **Game**: (gameID, championshipID, date, whitePlayerID, blackPlayerID,
-  refereeLicenseNum)
-- **Referee**: (refereeLicenseNum, refereeName)
+### b) Rental2
 
-Where: - **Game.refereeLicenseNum** is a FK to
-Referee.refereeLicenseNum.
+**Current State & Justification:**
 
-Both are now in BCNF.
+The relation `Rental2` is 2NF. Unlike before, the primary key here
+(`numberRental`) is a single attribute (an incrementing number). 2NF
+violations appear when an attribute depends on only *part* of a
+composite primary key. Since the key has no “parts to split, it is
+impossible to have a partial dependency.
 
-## c) **Add Referee Categories**
+However the relation is not 3NF, thus also not in BCNF. This is due to
+it having transi\`tive dependencies. Non-key attributes are determining
+other non-key attributes. For example:
 
-Requirement: Each referee can participate in multiple categories (and
-vice versa).
+- `numberRental` determines `idUser`, but `idUser` then determines
+  `name` or `phone`. This creates a chain of “numberRental -\> idUser
+  -\> name” which is not good practice.
+- Similarly, `numberRental` determines `codeBicycle`, which determines
+  `model`, which in its turn also determines `batteryType`.
 
-- This is a many-to-many relationship: Referees ↔ Categories
+To reach BCNF, these transitive dependencies must be removed by
+separating the data into distinct relations where every determinant is a
+candidate key.
 
-#### **Normal Form Impact**
+**Transformation to BCNF**
 
-You’ll need:
+**Extracting User Info**
 
-- **Category(categoryID, categoryName, …)**
-- **RefereeCategory(refereeLicenseNum, categoryID)**
+The attributes `name` and `phone` depend on `idUser`, not on the rental
+transaction itself. We can remove this transitive dependency by creating
+a separate table for users.
 
-Assume: - refereeLicenseNum is PK in Referee. - categoryID is PK in
-Category. - refereeLicenseNum + categoryID composite PK in
-RefereeCategory.
+- **New Relation:** `Users` (**idUser**, name, phone)
+- **Modified Rental:** `Rental2` retains `idUser` as a foreign key but
+  loses `name` and `phone`.
 
-**Are these relations in BCNF?**
+**Extracting Bicycle and Model Info**
 
-- Each table’s candidate keys are the determinants of their FDs; thus,
-  all are in BCNF (assuming no partial or transitive dependencies in the
-  new tables).
+There is a nested dependency chain here: codeBicycle -\> model -\>
+batteryType. If we simply moved all bicycle info to one table, we would
+still have a 3NF violation because `batteryType` depends on `model`, not
+strictly on the specific `codeBicycle`. Therefore, this needs to be
+split into two parts:
 
-## d) **Player Pairs’ First Match Info: To BCNF**
+1.  **Model Data:** We create a relation to store the features that
+    belong to a model type.
+    - **New Relation:** `Models` (**model**, batteryType)
+2.  **Bicycle Data:** We can create a relation for the specific physical
+    bikes, linking them to their model.
+    - **New Relation:** `Bicycles` (**codeBicycle**, model)
 
-Requirement: Know, for each pair of players, the year they first faced
-each other, and the championship name.
+**Final BCNF**
 
-Attributes needed:  
-(player1Name, player2Name, year, championshipName)
+The original `Rental2` relation is now reduced to just the transaction
+details, referencing the other entities via foreign keys.
 
-#### **How should you design this?**
-
-**Since names are not necessarily unique (should use playerID), but if
-names uniquely identify players in this context, then:**
-
-A possible relation:
-
-- **PlayerPairFirstMatch(player1ID, player2ID, year, championshipID)**
-
-where: - (player1ID, player2ID) are IDs of players such that player1ID
-\< player2ID (to avoid duplicate pairs) - year is integer,
-championshipID is FK to Championship
-
-If you include names directly: - **(player1ID, player2ID, year,
-championshipID, player1Name, player2Name, championshipName)** - But
-player1Name depends on player1ID, and championshipName on
-championshipID, so this will not be in 3NF.
-
-**To achieve BCNF:**  
-- Use only IDs in the relation: (player1ID, player2ID, year,
-championshipID) - Fetch player names and championship name via join if
-needed.
+1.  **Rentals** (**numberRental**, momentStart, idUser, codeBicycle,
+    momentEnd, price)
+    - *Foreign Keys:* `idUser` references `Users`, `codeBicycle`
+      references `Bicycles`.
+2.  **Users** (**idUser**, name, phone)
+3.  **Bicycles** (**codeBicycle**, model)
+    - *Foreign Keys:* `model` references `Models`.
+4.  **Models** (**model**, batteryType)
