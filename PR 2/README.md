@@ -1,0 +1,773 @@
+# PR 2
+Alejandro Pérez Bueno
+Dec 30, 2025
+
+- [<span class="toc-section-number">1</span> Data
+  Loading](#data-loading)
+- [<span class="toc-section-number">2</span> SQL](#sql)
+- [<span class="toc-section-number">3</span> DDL](#ddl)
+- [<span class="toc-section-number">4</span> Indexes and
+  Views](#indexes-and-views)
+- [<span class="toc-section-number">5</span> Model review and
+  optimization](#model-review-and-optimization)
+
+
+
+## Data Loading
+
+### Exercise 1a
+
+![Version and System Identifier](./img/ex1a.png)
+
+### Exercise 1b
+
+> [!WARNING]
+>
+> We are asked to create a schema named `S_Q254`, but everywhere else in
+> the subject the schema is actually called `S_Q25`. I created the
+> `S_Q25` schema instead, as otherwise I would get unexpected empty
+> queries and errors.
+
+#### Missing attribute in Invoice data
+
+The data definition and the UML diagram contains 4 attributes, but the
+`invoice.csv` file contains 5. Its second column refers to an
+`incidentID`, which as mentioned in the subject, is what incidents are
+related to. This field should be a foreign key to the Incident class.
+
+#### Missing attribute in InvoiceLine data
+
+As before, there is a mismatch between the table of the attributes and
+what is actually shown in the `invoiceline.csv` file. The first column
+in it is missing in the table. he diagram shows a `1` to `1..*`
+relationship between `Invoice` and `InvoiceLine`. It even includes the
+note “InvoiceLine is weak respect Invoice”. This means an `InvoiceLine`
+cannot exist without an Invoice. Therefore, we must add an `invoiceCode`
+column as a foreign key.
+
+Furthermore, since the entity is weak, the primary key of `InvoiceLine`
+should not only be the `Line Number`, but rather a composition of
+`(invoiceCode, lineNumber)`
+
+#### SQL table creation
+
+##### Invoice table
+
+``` sql
+CREATE TABLE invoice (
+    code VARCHAR(50) NOT NULL,
+    incident_id VARCHAR(50) NOT NULL, 
+    invoiceDate DATE NOT NULL,
+    amount NUMERIC(12,2) NOT NULL,
+    amountWithVAT NUMERIC(12,2) NOT NULL,
+    
+    CONSTRAINT pk_invoice PRIMARY KEY (code),
+    CONSTRAINT fk_invoice_incident FOREIGN KEY (incident_id) 
+        REFERENCES incident(code)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT 
+);
+```
+
+##### InvoiceLine table
+
+``` sql
+CREATE TABLE invoiceline (
+    invoice_code VARCHAR(50) NOT NULL,
+    lineNumber INTEGER NOT NULL,
+    concept VARCHAR(200) NOT NULL,
+    amount NUMERIC(12,2) NOT NULL,
+    amountWithVAT NUMERIC(12,2) NOT NULL,
+
+    CONSTRAINT pk_invoiceline PRIMARY KEY (invoice_code, lineNumber),
+    CONSTRAINT fk_invoiceline_invoice FOREIGN KEY (invoice_code) 
+        REFERENCES invoice (code)
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE
+);
+```
+
+### Exercise 1c
+
+> [!TIP]
+>
+> In order to run the `COPY` command from the editor, I first had to
+> copy the CSV files to a location the `postgres` user had access to.
+> Thus, I copied them to `/tmp` and changed their permissions and owner
+> as follows:
+>
+> ``` bash
+> cp invoice.csv invoiceline.csv /tmp/
+> chmod 644 /tmp/invoice.csv
+> chmod 644 /tmp/invoiceline.csv
+> sudo chown postgres:postgres /tmp/invoice.csv
+> sudo chown postgres:postgres /tmp/invoiceline.csv
+> ```
+
+#### Invoice table
+
+``` sql
+COPY invoice (code, incident_id, invoiceDate, amount, amountWithVAT)
+FROM '/tmp/invoice.csv'
+WITH (
+    FORMAT CSV,
+    DELIMITER ',',
+    ENCODING 'UTF8'
+);
+```
+
+#### InvoiceLine table
+
+``` sql
+COPY invoiceline (invoice_code, lineNumber, concept, amount, amountWithVAT)
+FROM '/tmp/invoiceline.csv'
+WITH (
+    FORMAT CSV,
+    DELIMITER ',',
+    ENCODING 'UTF8'
+);
+```
+
+> [!WARNING]
+>
+> I initially had issues copying rows to the `invoiceline` table. After
+> some research, I found it had to do with encoding between Linux and
+> Windows. The CSV files were likely created from windows, and when
+> importing them to Linux some special characters appeared in the code,
+> making the invoice codes to mismatch and thus fail with errors similar
+> to the following:
+>
+> ``` bash
+> ERROR:  insert or update on table "invoiceline" violates foreign key constraint "fk_invoiceline_invoice"
+> Key (invoice_code)=(INV0467) is not present in table "invoice". 
+> ```
+>
+> I trimmed special characters to fix the issue with the following
+> commands:
+>
+> ``` sql
+> UPDATE invoice SET code = TRIM(both ' \r\n\t' from code);
+> UPDATE invoice SET code = regexp_replace(code, '[^a-zA-Z0-9]', '', 'g');
+> ```
+>
+> After this all rows were properly copied to the `invoiceline` table.
+
+### Exercise 1d
+
+![Summary](./img/ex1d.png)
+
+### Exercise 1e
+
+![ERD Database Diagram](./img/ex1e.png)
+
+## SQL
+
+### Exercise 2a
+
+#### Executed SQL command
+
+``` sql
+SELECT T2.name AS "Name",
+       T1.phone AS "Phone"
+FROM employee AS T1
+JOIN person AS T2 ON T1.personid = T2.identification
+WHERE EXTRACT(YEAR FROM T1.initdate) = 2021
+  AND EXTRACT(MONTH FROM T1.initdate) = 1;
+```
+
+![Screenshot of the result of the SQL command](./img/ex2a.png)
+
+### Exercise 2b
+
+#### Executed SQL command
+
+``` sql
+SELECT T1.personid,
+       T1.hourcost,
+       COUNT(T2.mechanicid) AS totalrepairs
+FROM mechanic AS T1
+JOIN repair AS T2 ON T1.personid = T2.mechanicid
+GROUP BY T1.personid, T1.hourcost
+ORDER BY totalrepairs DESC
+LIMIT 10;
+```
+
+![Screenshot of the result of the SQL command](./img/ex2b.png)
+
+### Exercise 2c
+
+#### Executed SQL command
+
+``` sql
+SELECT
+    T1.code AS basecode,
+    T1.name,
+    COUNT(T2.code) AS bikecount,
+    ROUND(
+        (COUNT(T2.code)::numeric / (SELECT COUNT(*) FROM bicycle WHERE basecode IS NOT NULL)) * 100,
+        2
+    ) AS percenttotal
+FROM base AS T1
+JOIN bicycle AS T2 ON T1.code = T2.basecode
+GROUP BY T1.code, T1.name
+ORDER BY bikecount DESC
+LIMIT 10;
+```
+
+![Screenshot of the result of the SQL command](./img/ex2c.png)
+
+### Exercise 2d
+
+#### Executed SQL command
+
+``` sql
+SELECT CAST(EXTRACT(YEAR FROM invoiceDate) AS INTEGER) AS "year",
+       CAST(EXTRACT(MONTH FROM invoiceDate) AS INTEGER) AS "month",
+       SUM(amountWithVAT) AS "totalAmount"
+FROM invoice
+WHERE EXTRACT(YEAR FROM invoiceDate) = 2025
+GROUP BY EXTRACT(YEAR FROM invoiceDate), EXTRACT(MONTH FROM invoiceDate)
+ORDER BY "month";
+```
+
+![Screenshot of the result of the SQL command](./img/ex2d.png)
+
+## DDL
+
+### Exercise 3a
+
+#### Default ‘pending’ value for ‘status’
+
+``` sql
+ALTER TABLE incident
+ALTER COLUMN status SET DEFAULT 'Pending';
+```
+
+#### Add new row
+
+``` sql
+INSERT INTO incident (code, description, timeReported, bicycleCode, reporterId)
+VALUES ('I11000', 'Lubrication', NOW(), 41, 'P0136');
+```
+
+#### Query table to show status as ‘pending’ by default
+
+``` sql
+SELECT code, description, status, timeReported, bicycleCode, reporterId
+FROM incident
+WHERE code = 'I11000';
+```
+
+![Query result](./img/ex3a.png)
+
+### Exercise 3b
+
+#### Make ‘battery’ for ‘bicycle’ to use 2 decimals instead of int
+
+``` sql
+ALTER TABLE bicycle
+ALTER COLUMN battery TYPE NUMERIC(5,2);
+```
+
+#### Add new row with the ‘battery’ as a float
+
+> [!WARNING]
+>
+> The subject says the code should be 301, but that one already exists.
+> I created one with the code **2**301, since that is the next available
+> code. It was probably a typo.
+
+``` sql
+INSERT INTO bicycle (code, model, battery, status, basecode)
+VALUES (2301, 'Model-01', 75.50, 'Available', 4);
+```
+
+#### Query table to show ‘battery’ as float
+
+``` sql
+SELECT code, model, battery, status, basecode
+FROM bicycle
+WHERE code = 2301;
+```
+
+![Query result](./img/ex3b.png)
+
+### Exercise 3c
+
+> [!WARNING]
+>
+> What is requested here was already done as part of
+> <a href="#sec-sql-table-creation" class="quarto-xref">Section 1.2.3</a>.
+>
+> However, this would be the way to insert the constraint:
+>
+> ``` sql
+> ALTER TABLE invoiceline
+> ADD CONSTRAINT fk_invoiceline_invoice
+>     FOREIGN KEY (invoice_code)
+>     REFERENCES invoice (code)
+>     ON UPDATE CASCADE
+>     ON DELETE CASCADE;
+> ```
+
+### Exercise 3d
+
+Adding the `UNIQUE` constraint to a column prevents duplicates in its
+table.
+
+#### Advantages
+
+1.  Reliable data rules: the database itself enforces uniqueness instead
+    of relying on the app to do it. That guards against race conditions
+    when two requests try to insert the same email or username at the
+    same time and ensures duplicates are always rejected.
+2.  Faster lookups on the constrained column: most relational databases
+    implement UNIQUE with a unique index. Tasks like finding a user by
+    email can use that index instead of scanning the whole table, so
+    reads on that field are much quicker.
+
+#### Disadvantages
+
+1.  Extra cost on writes: Every `INSERT` or `UPDATE` that affects the
+    unique column must check and maintain the index. That extra work
+    could add latency, which can be a problem in some systems.
+2.  Less flexibility if requirements change: declaring a value unique
+    could be a rigid rule. If the business later allows duplicates
+    dropping or changing the constraint on a large table can require
+    index rebuilds, which may affect the runtime of the application
+    relying on the DB.
+
+## Indexes and Views
+
+### Exercise 4a
+
+![Query result](./img/ex4a.png)
+
+In `pg_indexes`, the `indexdef` column stores the exact `CREATE INDEX`
+statement used to build each index.
+
+The command is
+
+``` sql
+CREATE UNIQUE INDEX pk_invoiceline ON invoiceline USING btree (invoice_code, linenumber)
+```
+
+From this we can tell:
+
+- It is UNIQUE, so the pair (invoice_code, linenumber) can’t repeat. In
+  practice, this is the index backing the table’s primary key
+- The index name is `pk_invoiceline`.
+- It uses the `btree` (Balanced Tree) method, PostgreSQL’s default,
+  which works well for equality lookups and range queries.
+- The key is composite: `invoice_code` + `linenumber`. A line number may
+  repeat across invoices, but not within the same invoice, showing that
+  an invoiceline is identified by its parent invoice together with the
+  line number.
+
+### Exercise 4b
+
+#### Execution plan
+
+![Query execution plan](./img/ex4b1.png)
+
+#### Index creation
+
+``` sql
+CREATE INDEX idx_incident_reporterid ON incident (reporterid);
+```
+
+> [!TIP]
+>
+> Re-run analyze:
+>
+> ``` sql
+> ANALYZE incident;
+> ```
+
+#### New execution plan
+
+![Query execution plan after index](./img/ex4b2.png)
+
+#### Performance analysis
+
+Creating the index clearly sped up the target query. Before, the planner
+chose a sequential scan with an estimated total cost of 251.26 because
+every row had to be inspected. Afterward, it used a bitmap index scan
+with an estimated total cost of 27.35, which is roughly a **90%
+reduction**.
+
+Regarding the writes, the index in question is on the incident table
+(`idx_incident_reporterid` on `incident`). Index maintenance happens
+only when rows in that same table change. Inserts, updates, or deletes
+on the `Property` table do not touch this index and therefore suffer no
+overhead from it.
+
+Therefore, keeping this index is the right decision to make. It
+meaningfully improves read performance for the query on incident, and it
+has no negative effect on write activity in `Property`.
+
+### Question 4c
+
+#### Execution plan
+
+![Query execution plan](./img/ex4c1.png)
+
+#### Index choice
+
+We should use a B-tree index. It’s standard in PostgreSQL and shines for
+range and comparison operators:
+
+- Range lookups: `amount < 35` lets the engine seek to the key near 35
+  and then scan in order, which is precisely how a B-tree is laid out.
+- Numeric column: `amount` is numeric and B-trees are built for ordered
+  types (numbers, timestamps, text) and operators like `<`, `<=`, `=`,
+  `>=`, `>`.
+- Discarded indexes:
+  - Hash: supports equality only, so it is of no use for ranges.
+  - GiST/GIN: aimed at things such as full‑text, arrays, or geometry,
+    not plain numeric comparisons.
+
+#### Index creation
+
+``` sql
+CREATE INDEX idx_invoiceline_amount
+ON invoiceline USING btree (amount);
+
+ANALYZE invoiceline;
+```
+
+#### New execution plan
+
+![Query execution plan after index](./img/ex4c2.png)
+
+#### Performance analysis
+
+##### Before indexing (sequential scan)
+
+- Estimated cost: 778.5
+- The planner chose a full table scan, checking every row for amount \<
+  35.
+- Filtered out: 24,501 rows to keep 19 actual matches.
+
+##### After indexing
+
+- New estimated cost: 357.16
+- The B‑tree index was used to find the matching row pointers first
+  (Bitmap Index Scan) and then only those pages were fetched.
+
+##### Veredict
+
+My recommendation is therefore to keep the B-tree the index. Range
+filters like `amount < 35` are a great fit for this index type, the
+reduction is well over 50% and the small overhead on inserts is a fair
+trade for much faster reads on this query pattern.
+
+### Question 4d
+
+#### View SQL create code
+
+``` sql
+CREATE OR REPLACE VIEW VW_IncidentsDetail AS
+SELECT
+    i.code AS "Incident Code",
+    i.timereported AS "Reported Date/Time",
+    i.description AS "Description",
+    i.repairshopcode AS "Assigned Workshop",
+    i.maintenancesupervisorid AS "Assigned Supervisor",
+    b.model AS "Bicycle Model",
+    i.status AS "Status"
+FROM 
+    incident i
+JOIN 
+    bicycle b ON i.bicyclecode = b.code;
+```
+
+#### View SQL query
+
+``` sql
+SELECT 
+    "Incident Code",
+    "Reported Date/Time",
+    "Bicycle Model"
+FROM 
+    VW_IncidentsDetail
+WHERE 
+    "Status" = 'Resolved'
+ORDER BY 
+    "Reported Date/Time" DESC
+LIMIT 5;
+```
+
+![View SQL query Screenshot](./img/ex4d.png)
+
+### Exercise 4e
+
+#### View SQL create code
+
+``` sql
+CREATE OR REPLACE VIEW VW_CountIncidents2025 AS
+SELECT
+    rs.city AS "City",
+    COUNT(*) AS "Total Incidents"
+FROM
+    VW_IncidentsDetail v
+JOIN
+    repairshop rs ON v."Assigned Workshop" = rs.code
+WHERE
+    EXTRACT(YEAR FROM v."Reported Date/Time") = 2025
+GROUP BY
+    rs.city
+ORDER BY
+    "Total Incidents" DESC,
+    "City" ASC;
+```
+
+#### Query to view 10 first records
+
+``` sql
+SELECT *
+FROM VW_CountIncidents2025
+LIMIT 10;
+```
+
+![View SQL query Screenshot](./img/ex4e.png)
+
+#### Materialized View
+
+> [!WARNING]
+>
+> We were asked to create the Materialized View of the view
+> `VW_CountIncidentsByCity2025`, but it is not referenced before this
+> statement. Therefore, will use the previously created
+> `VW_CountIncidents2025` view.
+
+``` sql
+CREATE MATERIALIZED VIEW V_VW_CountIncidents2025 AS
+SELECT *
+FROM VW_CountIncidents2025;
+```
+
+#### Performance analysis
+
+##### Standard view (VW_CountIncidents2025)
+
+- Estimated cost: 379.69
+- 16-step plan:
+  - Sequential scans of incident (step 11), bicycle (step 14), and
+    repairshop (step 16)
+  - Several hash joins to connect those tables (steps 7 and 9)
+  - Sorting and a GroupAggregate (step 3) to count incidents by city
+- A view is just a stored query, so every SELECT reruns all joins,
+  filters, and aggregations over the base tables.
+
+##### Materialized view (V_VW_CountIncidents2025)
+
+- Estimated cost: 13.20
+- One sequential scan of the physical table v_vw_countincidents2025
+- The materialized view stores the query’s result on disk; reading it
+  doesn’t touch incident, bicycle, or repairshop or recompute
+  joins/counts.
+
+All in all, querying the materialized view is almost 30x cheaper because
+the expensive work—joining and counting—was done beforehand and only
+needs to be redone when you refresh it.
+
+#### Advantages and Disadvantages
+
+Given that 2025 is still underway, here’s a concise take on using a
+materialized view for this data.
+
+##### Advantages
+
+- The plan cost drops quite significantly, so year‑to‑date dashboards
+  open quickly without redoing heavy joins.
+- The analytical reads shift to the view, so inserts/updates on incident
+  aren’t competing with reporting queries.
+
+##### Disadvantages
+
+- A materialized view is a snapshot. Anything added after the last
+  refresh won’t appear, so counts drift until you refresh.
+- You need a refresh schedule. Refreshing too often eats into
+  performance; refreshing rarely makes the numbers too old to trust.
+
+#### Updating view
+
+Materialized views do not update automatically. One must regularly
+refresh it with the following:
+
+``` sql
+REFRESH MATERIALIZED VIEW V_VW_CountIncidents2025;
+```
+
+## Model review and optimization
+
+### Question 5a
+
+#### `hourCost` SQL query
+
+``` sql
+SELECT 
+    'hourCost' AS column_name,
+    'Mechanic' AS table_name,
+    COUNT(*) AS number_of_rows,
+    COUNT(DISTINCT hourcost) AS distinct_values,
+    AVG(pg_column_size(hourcost)) AS average_occupation
+FROM mechanic;
+```
+
+#### Space occupied by tables
+
+Query run:
+
+``` sql
+SELECT
+pg_class.relname AS objectname, pg_class.relkind AS objecttype,
+pg_class.reltuples, pg_size_pretty(pg_class.relpages::bigint*8*1024) AS size
+FROM pg_class, pg_catalog.pg_statio_user_tables
+WHERE
+pg_catalog.pg_statio_user_tables.relid = pg_class.OID AND
+SchemaName = 's_q25'
+```
+
+![Query result](./img/ex5a.png)
+
+### Exercise 5b
+
+The most appropriate column to move to a separate table is **`concept`
+from the `InvoiceLine` table** due to the following:
+
+- Very low cardinality: 11 unique values across 24,520 rows, so the same
+  strings repeat thousands of times.
+- The strings are fairly large (about 95 bytes on average). If those 11
+  concepts live in a small lookup table (`ConceptID`, `Description`),
+  `InvoiceLine` would keep only a 4‑byte foreign key.
+
+How the others compare:
+
+- `hourCost` (Mechanic): 342 distinct out of 502 rows. High variety,
+  little duplication—normalizing won’t help much.
+- `description` (Incident): 20 distinct in 10,501 rows, but the text is
+  short (~15 bytes), so the payoff is limited.
+- `description` (RepairShop): Only 3 distinct and fairly long (~92
+  bytes), so it’s a reasonable candidate, but with just 495 rows the
+  total gain is small next to InvoiceLine.
+
+### Exercise 5c
+
+``` sql
+CREATE TABLE invoice_concept (
+    id SERIAL PRIMARY KEY,
+    description VARCHAR(200) NOT NULL,
+
+    CONSTRAINT uq_invoice_concept_description UNIQUE (description)
+);
+```
+
+<div class="{callout-tip}">
+
+Added the `uq_invoice_concept_description` constraint to ensure
+descriptions are unique so normalization works properly.
+
+</div>
+
+### Exercise 5d
+
+#### Populate the table
+
+``` sql
+INSERT INTO invoice_concept (description)
+SELECT DISTINCT concept
+FROM invoiceline;
+```
+
+#### Query the table
+
+``` sql
+SELECT * FROM invoice_concept;
+```
+
+![Query result](./img/ex5d.png)
+
+### Exercise 5e
+
+- Add a new column to store the identifier
+
+``` sql
+ALTER TABLE invoiceline
+ADD COLUMN concept_id INTEGER;
+```
+
+- Update the values of the new column
+
+``` sql
+UPDATE invoiceline il
+SET concept_id = ic.id
+FROM invoice_concept ic
+WHERE il.concept = ic.description;
+```
+
+- Delete the original column
+
+``` sql
+ALTER TABLE invoiceline
+DROP COLUMN concept;
+```
+
+- Define the foreign key constraint
+
+``` sql
+ALTER TABLE invoiceline
+ADD CONSTRAINT fk_invoiceline_concept
+FOREIGN KEY (concept_id)
+REFERENCES invoice_concept(id);
+```
+
+- Verification: Show the combined values (First 10 records)
+
+``` sql
+SELECT
+    il.invoice_code,
+    il.linenumber,
+    ic.description AS concept,
+    il.amount,
+    il.amountwithvat
+FROM 
+    invoiceline il
+JOIN 
+    invoice_concept ic ON il.concept_id = ic.id
+LIMIT 10;
+```
+
+![Query result](./img/ex5d.png)
+
+#### Final comparison
+
+Here’s how the table changed.
+
+- Space used by `invoiceline`
+  - Before normalization:
+    - The concept text averaged about 95 bytes per row.
+    - With roughly 24,520 rows, that single column was ~2.3 MB on its
+      own (24,520 × 95 bytes).
+    - Once you include other columns and storage overhead, the table
+      would land around 3–4 MB.
+  - After normalization:
+    - `invoiceline` now shows about 1,448 kB (~1.4 MB).
+    - `concept_id` is an int (4 bytes), so every row swapped ~95 bytes
+      of text for 4 bytes.
+- Net effect: a reduction over 50%.
+
+##### Trade‑offs
+
+- Pros
+  - Much smaller footprint, which saves disk and helps the table fit in
+    memory caches.
+  - Single place to maintain each concept
+  - Quicker scans on `invoiceline` (sums, date filters) because there
+    are fewer pages to read.
+- Cons
+  - Queries are less direct: to see the concept text you now join with
+    `invoice_concept`.
+  - Reconstructing the full view costs a join, which is heavier than
+    reading a single wide row.
