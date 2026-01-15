@@ -1,11 +1,10 @@
 # Database Design Practices | UOC
 *Database Design Practices :floppy_disk:*
 
-:construction:
-
 ## CATs
 
 - [CAT 1](./CAT%201)
+- [CAT 2](./CAT%202)
 
 ## Practices
 
